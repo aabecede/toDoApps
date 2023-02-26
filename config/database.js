@@ -1,6 +1,5 @@
 // Database Connection
 require('dotenv').config();
-require('mongoose')
 const Sequelize = require('sequelize');
 
 const sequelize = new Sequelize(

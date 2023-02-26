@@ -14,27 +14,29 @@ const baseResponse = function (
 const res200Json = function ({
     response,
     data,
+    statusCode = 200
 }) {
     baseResponse({
         response,
         data,
         status: 'Success',
         message: 'Success',
-        statusCode: 200
+        statusCode
     })
 }
 
 const res400Json = function ({
     response,
     data = {},
-    message
+    message,
+    statusCode = 400
 }) {
     baseResponse({
         response,
         data,
         status: 'Request Invalid',
         message,
-        statusCode: 400
+        statusCode
     })
 }
 const res500Json = function ({

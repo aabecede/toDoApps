@@ -2,15 +2,19 @@ const { res200Json, res500Json, res400Json } = require('../../utils/response-han
 var ActivityModel = require("../../models/activity-model");
 const NodeCache = require('node-cache');
 const cache = new NodeCache({ stdTTL: 3600 });
-const_prefix_cache = 'cache-activities-'
+const prefix_cache = 'cache-activities-'
+const { body, validationResult } = require('express-validator');
+const bodyParser = require('body-parser');
+const validatorCustom = require('../../middleware/validator')
 
-exports.getAllData = async function(req, res, next){
+
+exports.getAllData = async function (req, res, next) {
     try {
 
-        const cacheKey = `${const_prefix_cache}all`;
+        const cacheKey = `${prefix_cache}all`;
         const data = cache.get(cacheKey);
 
-        if(data){
+        if (data) {
             console.log(cacheKey)
             return res200Json({
                 response: res,
@@ -19,42 +23,42 @@ exports.getAllData = async function(req, res, next){
                 }
             })
         }
-        else{
+        else {
 
             ActivityModel.findAll()
                 .then(activities => {
                     cache.set(cacheKey, activities, 600);
                     return res200Json({
-                        response : res,
-                        data : {
-                            'data' : activities
+                        response: res,
+                        data: {
+                            'data': activities
                         }
                     })
                 })
                 .catch(err => {
                     return res500Json({
-                            response : res,
-                            data: {'error' : err}
+                        response: res,
+                        data: { 'error': err }
                     })
                 });
         }
 
     } catch (e) {
         return res500Json({
-            response : res,
-            message : e.message
+            response: res,
+            message: e.message
         })
     }
 }
 
-exports.getById = async function(req, res, next){
+exports.getById = async function (req, res, next) {
     try {
-        
+
         const activityId = req.params.activityId;
-        const cacheKey = `${const_prefix_cache}${activityId}`
+        const cacheKey = `${prefix_cache}${activityId}`
         const data = cache.get(cacheKey);
 
-        if(data){
+        if (data) {
             console.log(cacheKey)
             return res200Json({
                 response: res,
@@ -63,7 +67,7 @@ exports.getById = async function(req, res, next){
                 }
             })
         }
-        else{
+        else {
             ActivityModel.findByPk(activityId)
                 .then(activity => {
                     if (activity) {
@@ -77,7 +81,7 @@ exports.getById = async function(req, res, next){
                     } else {
                         return res400Json({
                             response: res,
-                            data: { }
+                            data: {}
                         })
                     }
                 })
@@ -91,28 +95,43 @@ exports.getById = async function(req, res, next){
 
     } catch (e) {
         return res500Json({
-            response : res,
-            message : e.message
+            response: res,
+            message: e.message
         })
     }
 }
 
-exports.createData = async function(req, res, next){
-    try {
-        
+exports.createData = [
+    bodyParser.json(),
+    validatorCustom.validate([
+        body('email').isEmail().normalizeEmail().notEmpty(),
+        body('title').notEmpty(),
+    ], validationResult),
+    (req, res) => {
         const { title, email } = req.body;
         ActivityModel.create({ title, email })
             .then(result => {
-                res.status(201).json(result);
+                const cacheData = {
+                    "activity_id": result?.activity_id,
+                    "title": result?.title,
+                    "email": result?.email,
+                    "created_at": result?.created_at,
+                    "updated_at": result?.updated_at,
+                }
+                const cacheKey = `${prefix_cache}${result?.activity_id}`
+                cache.set(cacheKey, cacheData, 600);
+                return res200Json({
+                    response: res,
+                    data: {
+                        'data': result
+                    }
+                })
             })
             .catch(err => {
-                res.status(500).json({ error: err });
+                return res500Json({
+                    response: res,
+                    data: { 'error': err }
+                })
             });
-
-    } catch (e) {
-        return res500Json({
-            response : res,
-            message : e.message
-        })
-    }
-}
+    },
+];
