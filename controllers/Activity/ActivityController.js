@@ -6,7 +6,20 @@ const prefix_cache = 'cache-activities-'
 const { body, validationResult } = require('express-validator');
 const bodyParser = require('body-parser');
 const validatorCustom = require('../../middleware/validator')
+const sequelize = require('../../config/database')
+const { Sequelize } = require('sequelize');
 
+const formatDataCustom = (activity) => {
+    return {
+        'id': activity?.activity_id,
+        'title' : activity?.title,
+        'email' : activity?.email,
+        'created_at' : activity?.created_at,
+        'updated_at' : activity?.updated_at,
+        'deleted_at' : activity?.deleted_at,
+
+    }
+}
 
 exports.getAllData = async function (req, res, next) {
     try {
@@ -15,7 +28,7 @@ exports.getAllData = async function (req, res, next) {
         const data = cache.get(cacheKey);
 
         if (data) {
-            console.log(cacheKey)
+            // console.log(cacheKey)
             return res200Json({
                 response: res,
                 data: {
@@ -25,7 +38,16 @@ exports.getAllData = async function (req, res, next) {
         }
         else {
 
-            ActivityModel.findAll()
+            ActivityModel.findAll({
+                attributes: [
+                    ['activity_id', 'id'],
+                    'title',
+                    'email',
+                    'created_at',
+                    'updated_at',
+                    'deleted_at',
+                ]
+            })
                 .then(activities => {
                     cache.set(cacheKey, activities, 600);
                     return res200Json({
@@ -59,7 +81,7 @@ exports.getById = async function (req, res, next) {
         const data = cache.get(cacheKey);
 
         if (data) {
-            console.log(cacheKey)
+            // console.log(cacheKey)
             return res200Json({
                 response: res,
                 data: {
@@ -68,20 +90,30 @@ exports.getById = async function (req, res, next) {
             })
         }
         else {
-            ActivityModel.findByPk(activityId)
+            ActivityModel.findOne({
+                where: {
+                    activity_id: activityId,
+                    deleted_at: null
+                }
+            })
                 .then(activity => {
                     if (activity) {
                         cache.set(cacheKey, activity, 600);
                         return res200Json({
                             response: res,
                             data: {
-                                'data': activity
+                                'data': formatDataCustom(activity)
                             }
                         })
                     } else {
                         return res400Json({
                             response: res,
-                            data: {}
+                            statusCode: 404,
+                            status: "Not Found",
+                            message: `Activity with ID ${activityId} Not Found`,
+                            data: {
+                                data: {}
+                            }
                         })
                     }
                 })
@@ -104,34 +136,176 @@ exports.getById = async function (req, res, next) {
 exports.createData = [
     bodyParser.json(),
     validatorCustom.validate([
-        body('email').isEmail().normalizeEmail().notEmpty(),
-        body('title').notEmpty(),
+        body('email').isEmail().withMessage('email format false')
+            .normalizeEmail()
+            .notEmpty().withMessage('email cannot be null'),
+        body('title').notEmpty().withMessage('message cannot be null'),
     ], validationResult),
-    (req, res) => {
+    async (req, res) => {
         const { title, email } = req.body;
-        ActivityModel.create({ title, email })
-            .then(result => {
-                const cacheData = {
-                    "activity_id": result?.activity_id,
-                    "title": result?.title,
-                    "email": result?.email,
-                    "created_at": result?.created_at,
-                    "updated_at": result?.updated_at,
+
+        try {
+
+            const activity = await ActivityModel.create(
+                { title, email },
+            );
+
+            const cacheData = {
+                "id": activity?.activity_id,
+                "title": activity?.title,
+                "email": activity?.email,
+                "created_at": activity?.created_at,
+                "updated_at": activity?.updated_at,
+            }
+            const cacheKey = `${prefix_cache}${activity?.activity_id}`
+            cache.set(cacheKey, cacheData, 600);
+            // console.log(cacheData, cacheKey)
+            await req.transaction.commit()
+            return res200Json({
+                response: res,
+                data: {
+                    'data': cacheData
                 }
-                const cacheKey = `${prefix_cache}${result?.activity_id}`
+            })
+
+        } catch (e) {
+            await req.transaction.rollback();
+            return res500Json({
+                response: res,
+                message: e.message
+            })
+        }
+
+    },
+];
+
+
+exports.deleteById = async function (req, res, next) {
+    const transaction = await sequelize.transaction();
+    try {
+
+        const activityId = req.params.activityId;
+        var activity = await ActivityModel.findOne({
+            where: {
+                activity_id: activityId,
+                deleted_at: null
+            }
+        })
+        // console.log(activity)
+        if (activity) {
+            await ActivityModel.update({
+                deleted_at: Sequelize.literal('CURRENT_TIMESTAMP')
+            },
+                { where: { activity_id: activityId } },
+                {
+                    transaction
+                });
+
+            const cacheKey = `${prefix_cache}${activityId}`
+            cache.del(cacheKey);
+            cache.del(`${prefix_cache}all`);
+            await transaction.commit()
+            return res200Json({
+                response: res,
+                data: {
+                    data: {}
+                }
+            })
+        }
+        else {
+            await transaction.rollback()
+            return res400Json({
+                response: res,
+                statusCode: 404,
+                status: "Not Found",
+                message: `Activity with ID ${activityId} Not Found`,
+                data: {
+                    data: {}
+                }
+            })
+        }
+    } catch (e) {
+        await transaction.rollback()
+        return res500Json({
+            response: res,
+            message: e.message
+        })
+    }
+}
+
+exports.updateData = [
+    bodyParser.json(),
+    validatorCustom.validate([
+        body('title').notEmpty().withMessage('title cannot be null'),
+        // body('email').notEmpty().withMessage('email cannot be null'),
+    ], validationResult),
+    async (req, res) => {
+        const { title } = req.body;
+        try {
+            const activityId = req.params.activityId;
+            var activity = await ActivityModel.findOne({
+                where: {
+                    activity_id: activityId,
+                    deleted_at: null
+                },
+            });
+
+            if (activity) {
+                await ActivityModel.update({
+                    title: title
+                },
+                    {
+                        where: {
+                            activity_id: activityId,
+                            deleted_at: null
+                        },
+                    },
+                    {
+                        transaction: req.transaction
+                    }
+                )
+                //dunno why need recall
+                activity = await ActivityModel.findOne({
+                    where: {
+                        activity_id: activityId,
+                        deleted_at: null
+                    },
+                });
+                // console.log(activity)
+                const cacheData = formatDataCustom(activity)
+                const cacheKey = `${prefix_cache}${activity?.activity_id}`
                 cache.set(cacheKey, cacheData, 600);
+                // console.log(cacheData, cacheKey)
+                await req.transaction.commit()
                 return res200Json({
                     response: res,
                     data: {
-                        'data': result
+                        'data': cacheData
                     }
                 })
-            })
-            .catch(err => {
-                return res500Json({
+
+            }
+            else {
+                await req.transaction.rollback();
+                return res400Json({
                     response: res,
-                    data: { 'error': err }
+                    statusCode: 404,
+                    status: "Not Found",
+                    message: `Activity with ID ${activityId} Not Found`,
+                    data: {
+                        data: {}
+                    }
                 })
-            });
+
+            }
+
+        } catch (e) {
+            await req.transaction.rollback();
+            return res500Json({
+                response: res,
+                message: e.message
+            })
+        }
+
     },
 ];

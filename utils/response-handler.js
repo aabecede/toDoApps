@@ -14,13 +14,15 @@ const baseResponse = function (
 const res200Json = function ({
     response,
     data,
-    statusCode = 200
+    statusCode = 200,
+    status = 'Success',
+    message = 'Success',
 }) {
     baseResponse({
         response,
         data,
-        status: 'Success',
-        message: 'Success',
+        status,
+        message,
         statusCode
     })
 }
@@ -28,13 +30,14 @@ const res200Json = function ({
 const res400Json = function ({
     response,
     data = {},
-    message,
-    statusCode = 400
+    message = 'Invalid Request',
+    statusCode = 400,
+    status = 'Request Invalid',
 }) {
     baseResponse({
         response,
         data,
-        status: 'Request Invalid',
+        status,
         message,
         statusCode
     })
@@ -42,11 +45,12 @@ const res400Json = function ({
 const res500Json = function ({
     response,
     data = {},
-    message = 'Terjadi Kesalahab Server'
+    message = 'Terjadi Kesalahab Server',
+    status = 'Error',
 }) {
     baseResponse({
         response,
-        status: 'Error',
+        status,
         data,
         message,
         statusCode: 500

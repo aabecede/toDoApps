@@ -1,7 +1,9 @@
 const {
     createData,
+    deleteById,
     getAllData,
-    getById
+    getById,
+    updateData
 } = require('../controllers/Activity/ActivityController');
 // const middleware = require('../middleware/validator')
 const express = require('express');
@@ -12,6 +14,8 @@ router.route('/activity-groups')
     .post(createData)
     .get(getAllData);
 router.route('/activity-groups/:activityId')
+    .patch(updateData)
+    .delete(deleteById)
     .get(getById);
 
 module.exports = router;
